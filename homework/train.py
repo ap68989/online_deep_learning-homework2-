@@ -33,7 +33,7 @@ def train(
 
     # directory with timestamp to save tensorboard logs and model checkpoints
     log_dir = Path(exp_dir) / f"{model_name}_{datetime.now().strftime('%m%d_%H%M%S')}"
-    logger = tb.SummaryWriter(log_dir)
+    logger = tb.SummaryWriter(log_dir) # type: ignore
 
     # note: the grader uses default kwargs, you'll have to bake them in for the final submission
     model = load_model(model_name, **kwargs)
@@ -45,7 +45,7 @@ def train(
 
     # create loss function and optimizer
     loss_func = ClassificationLoss()
-    # optimizer = ...
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
     global_step = 0
     metrics = {"train_acc": [], "val_acc": []}
@@ -61,8 +61,21 @@ def train(
         for img, label in train_data:
             img, label = img.to(device), label.to(device)
 
-            # TODO: implement training step
-            raise NotImplementedError("Training step not implemented")
+            # implement training step
+            logits = model(img)
+            loss = loss_func(logits, label)
+
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+            # compute accuracy
+            preds = logits.argmax(dim=1)
+            acc = (preds == label).float().mean().item()
+
+            # Log loss and save accuracy metric
+            logger.add_scalar('train_loss', loss.item(), global_step)
+            metrics["train_acc"].append(acc)
 
             global_step += 1
 
@@ -73,14 +86,18 @@ def train(
             for img, label in val_data:
                 img, label = img.to(device), label.to(device)
 
-                # TODO: compute validation accuracy
-                raise NotImplementedError("Validation accuracy not implemented")
+                # compute validation accuracy
+                logits = model(img)
+                preds = logits.argmax(dim=1)
+                acc = (preds == label).float().mean().item()
+                metrics["val_acc"].append(acc)
 
         # log average train and val accuracy to tensorboard
         epoch_train_acc = torch.as_tensor(metrics["train_acc"]).mean()
         epoch_val_acc = torch.as_tensor(metrics["val_acc"]).mean()
 
-        raise NotImplementedError("Logging not implemented")
+        logger.add_scalar('train_accuracy', epoch_train_acc, global_step)
+        logger.add_scalar('val_accuracy', epoch_val_acc, global_step)
 
         # print on first, last, every 10th epoch
         if epoch == 0 or epoch == num_epoch - 1 or (epoch + 1) % 10 == 0:
@@ -108,7 +125,8 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=2024)
 
     # optional: additional model hyperparamters
-    # parser.add_argument("--num_layers", type=int, default=3)
+    parser.add_argument("--hidden_dim", type=int, default=128)
+    parser.add_argument("--num_layers", type=int, default=4)
 
     # pass all arguments to train
     train(**vars(parser.parse_args()))
